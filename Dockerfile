@@ -3,4 +3,4 @@ WORKDIR /app
 COPY . .
 EXPOSE 8080
 RUN yarn install --production
-CMD ["node", "/app/src/index.js"]1~
+CMD ["node", "/to-do-app-tf2/src/index.js"]
