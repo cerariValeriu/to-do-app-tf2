@@ -1,5 +1,5 @@
 FROM node:12-alpine
-WORKDIR /app
+WORKDIR /to-do-app-tf2
 COPY . .
 EXPOSE 8080
 RUN yarn install --production
