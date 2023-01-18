@@ -8,20 +8,17 @@ pipeline {
         IMAGE_NAME = "valeriucerari/to-do-app-update:java-maven-${BUILD_NUMBER}"
     }
     stages {
-         stage('test') {
-            steps {
-                script {
-                    echo "test the application"
-                    sh 'mvn test'
+        stage("Run app on Docker"){
+            agent{
+                docker{
+                    image 'node:12-alpine'
                 }
             }
-        } 
-         stage('build jar') {
-            steps {
-                script {
-                    echo "building the application jar"
-                    sh 'mvn package'
-                }
+            steps{
+                withEnv(["HOME=${env.WORKSPACE}"]) {
+                    sh 'yarn install --production'
+                    sh 'npm install'
+                }   
             }
         }
  
