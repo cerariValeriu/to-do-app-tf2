@@ -1,11 +1,9 @@
 pipeline {
     agent any
-    tools {
-        maven 'my-maven'
-        terraform 'tf'
-    }
     environment {
-        IMAGE_NAME = "valeriucerari/to-do-app-update:java-maven-${BUILD_NUMBER}"
+        ECR_REGISTRY = "280510155612.dkr.ecr.us-east-1.amazonaws.com"
+        APP_REPO_NAME= "techtorial-repo/to-do-app"
+        PATH="/usr/local/bin/:${env.PATH}"
     }
     stages {
         stage("Run app on Docker"){
@@ -21,17 +19,10 @@ pipeline {
                 }   
             }
         }
- 
-        stage('build image') {
+        stage('Build Docker Image') {
             steps {
-                script {
-                    echo "building the docker image"
-                     withCredentials([usernamePassword(credentialsId: 'docker-hub', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
-                        sh 'docker build -t ${IMAGE_NAME} .'
-                        sh "echo $PASS | docker login -u $USER --password-stdin"
-                        sh 'docker push ${IMAGE_NAME}'
-                    }
-                }
+                sh 'docker build --force-rm -t "$ECR_REGISTRY/$APP_REPO_NAME:latest" .'
+                sh 'docker image ls'
             }
         }
         stage('provision server') {
@@ -45,45 +36,27 @@ pipeline {
                 }
             }
         }
-        stage('deploy') {
-            environment {
-                DOCKER_CREDS = credentials('docker-hub')
-            }
-
+        stage('Push Image to ECR Repo') {
             steps {
-                script {
-                   echo "waiting for EC2 server to initialize" 
-                   sleep(time: 90, unit: "SECONDS") 
-                   echo 'deploying docker image to EC2...'
-                   echo "${EC2_PUBLIC_IP}"
-                   /* def shellCmd = "bash ./server-cmds.sh ${IMAGE_NAME}"
-                   sh "echo 'IMAGE=${IMAGE_NAME}' > .env" */
-                   def shellCmd = "bash ./server-cmds.sh ${IMAGE_NAME} ${DOCKER_CREDS_USR} ${DOCKER_CREDS_PSW}"
-                   def ec2Instance = "ec2-user@${EC2_PUBLIC_IP}"
-
-            
-                    sshagent(['firstkey']) {
-    /*                  sh "scp -o StrictHostKeyChecking=no ./.env ec2-user@${EC2_PUBLIC_IP}:/home/ec2-user"  
-                        sh "scp -o StrictHostKeyChecking=no docker-compose.yaml ec2-user@${EC2_PUBLIC_IP}:/home/ec2-user"
-                        sh 'ssh -o StrictHostKeyChecking=no ec2-user@${EC2_PUBLIC_IP} ${shellCmd}' 
-                        sh "ssh -o StrictHostKeyChecking=no ec2-user@${EC2_PUBLIC_IP} echo $PASS | docker login -u $USER --password-stdin && docker-compose -f docker-compose.yaml up --detach"
-                        
-    */ 
-                        sh "scp -o StrictHostKeyChecking=no server-cmds.sh ${ec2Instance}:/home/ec2-user"
-                        sh "scp -o StrictHostKeyChecking=no docker-compose.yaml ${ec2Instance}:/home/ec2-user"
-                        sh "ssh -o StrictHostKeyChecking=no ${ec2Instance} ${shellCmd}"
-
-
-                    }
-                   
-                }
+                sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 
+"$ECR_REGISTRY"'
+                sh 'docker push "$ECR_REGISTRY/$APP_REPO_NAME:latest"'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 
+"$ECR_REGISTRY"'
+                sh 'docker pull "$ECR_REGISTRY/$APP_REPO_NAME:latest"'
+                
+                sh 'docker run --name todo -dp 80:3000 "$ECR_REGISTRY/$APP_REPO_NAME:latest"'
             }
         }
     }
-    post { 
-        success { 
-            sh "cd terraform && terraform destroy --auto-approve"
+    post {
+        always {
+            echo 'Deleting all local images'
+            sh 'docker image prune -af'
         }
     }
-  
 }
